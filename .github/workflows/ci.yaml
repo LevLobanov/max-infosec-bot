@@ -1,0 +1,25 @@
+name: CI Checks (Python formatting & Docker Build)
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+jobs:
+  format_check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.x'
+          
+      - name: Install Black
+        run: pip install black
+        
+      - name: Run Black formatting check
+        run: black --check .
