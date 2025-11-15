@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+import logging
 import re
 import textwrap
 from typing import Any, Awaitable, Callable, Dict, Optional
@@ -24,8 +25,15 @@ from maxapi.types import (
     BotAdded,
     UpdateUnion,
 )
+from handlers.callbacks import handle_complete_conversation
+from handlers.commands import handle_check
+from handlers.groups import add_message_to_group_conversation
+from handlers.privates import add_message_to_private_conversation
 from leaks_aggregator import search_leaks, shutdown_all_clients
+from services.ai_analyzer import init_ai_analyzer
+from services.balance_checker import init_balance_checker
 from virus_checker import check_link, check_file, exit_vt_client
+from config import settings
 
 dp = Dispatcher()
 
@@ -64,7 +72,11 @@ class S(StatesGroup):
 
 def menu_kb() -> Attachment:
     return ButtonsPayload(
-        buttons=[[CallbackButton(text="Агрегатор утечек", payload="leaks_aggregator")]]
+        buttons=[[
+            CallbackButton(text="Агрегатор утечек", payload="leaks_aggregator")
+        ],[
+            CallbackButton(text="Анализ сообщения", payload="message_analysis")
+        ]]
     ).pack()
 
 
@@ -83,6 +95,7 @@ async def command_start(event: MessageCreated):
             Это бот-помощник для цифровой гигиены. У него есть несколько функций:
                 1) Чтобы проверить свои пароли, почты или номер телефона на наличие в утекших базах данных, нажми **Агрегатор утечек**.
                 2) Чтобы проверить файлы или ссылки на вирусы - пришлите их мне в чат.
+                3) Чтобы проверить сообщения на мошеннические мотивы, нажми **Проверка на мошенников**
             """
         ),
         parse_mode=ParseMode.MARKDOWN,
@@ -99,9 +112,8 @@ async def bot_added_to_chat(event: BotAdded):
                 Привет, я помощник по кибербезопасности!
 
                 Спасибо, что добавили меня в чат. Вот, что я умею:
+                **/start** - Стартовое сообщение
                 **/help** | **/справка** - Вывести подсказки по командам
-                **/scan** | **/сканировать** - В ответ на сообщение с ссылкой или файлом - проверит их на наличие угроз
-                **/leakscheck** | **/утечки** - В ответ на сообщение с данными (телефон, почта, пароль, логин) - проверить данные на наличие в базах утечек
                 """,
             parse_mode=ParseMode.MARKDOWN,
         )
@@ -113,21 +125,36 @@ async def send_help_message(event: MessageCreated):
         text=textwrap.dedent(
             """\
             Вот мои команды:
+            **/start** - Стартовое сообщение
             **/help** | **/справка** - Вывести подсказки по командам
-            **/scan** | **/сканировать** - В ответ на сообщение с ссылкой или файлом - проверит их на наличие угроз
-            **/leakscheck** | **/утечки** - В ответ на сообщение с данными (телефон, почта, пароль, логин) - проверить данные на наличие в базах утечек
             """
         ),
         parse_mode=ParseMode.MARKDOWN,
     )
 
 
+@dp.message_created(Command("check"))
+async def check_command(event: MessageCreated, context: MemoryContext):
+    await handle_check(event, context)
+
+
 @dp.message_callback(F.callback.payload == "leaks_aggregator")
-async def message_callback(callback: MessageCallback, context: MemoryContext):
+async def message_callback(event: MessageCallback, context: MemoryContext):
     await context.set_state(S.wait_for_leaks_check_data)
-    await callback.message.answer(
+    await event.message.answer(
         "Пришлите свои данные для проверки на наличие утечек (Номер телефона / почту / пароли / логины)"
     )
+
+
+@dp.message_callback(F.callback.payload == "message_analysis")
+async def message_analysis(event: MessageCallback, context: MemoryContext):
+    await handle_check(event, context)
+
+
+@dp.message_callback(F.callback.payload == "complete")
+@dp.message_callback(F.callback.payload == "cancel")
+async def handle_conversation(event: MessageCallback, context: MemoryContext):
+    await handle_complete_conversation(event, context)
 
 
 def create_data_leak_check_kb() -> Attachment:
@@ -175,13 +202,24 @@ async def check_file_for_viruses(event: MessageCreated):
 
 
 @dp.message_created(F.message.body.text)
-async def check_link_for_viruses(event: MessageCreated):
+async def check_link_for_viruses(event: MessageCreated, context: MemoryContext):
     if event.chat and event.chat.type == ChatType.DIALOG:
+        user_data = await context.get_data()
+        if user_data.get("is_collecting"):
+            await add_message_to_private_conversation(event, context, event.message.body.text)
+            return
         if is_online_link(event.message.body.text):
             await event.message.reply(text="Получил вашу ссылку, проверяю на угрозы...")
             asyncio.create_task(scan_and_send_result(event.message))
         else:
             await event.message.reply(text="Не могу распознать ссылку")
+    elif event.chat and event.chat.type == ChatType.CHAT:
+        user_data = await context.get_data()
+        if user_data.get("is_collecting"):
+            session_owner = user_data.get("session_owner")
+            if event.from_user and session_owner == event.from_user.user_id:
+                await add_message_to_group_conversation(event, context, event.message.body.text)
+            return
 
 
 def create_scan_result_kb(scan_id: str | None = None) -> Attachment:
@@ -282,6 +320,13 @@ async def bot_entry(max_bot_token: str):
     bot = Bot(max_bot_token)
     dp.middleware(IgnoreOldUpdatesMiddleware())
     bot_task = asyncio.create_task(dp.start_polling(bot))
+
+    try:
+        init_ai_analyzer(settings.AI_TUNNEL_TOKEN)
+        init_balance_checker(settings.AI_TUNNEL_TOKEN)
+        logging.info("AI анализатор и баланс-чекер инициализированы")
+    except Exception as e:
+        logging.error(f"Ошибка инициализации AI: {e}")
     try:
         return await bot_task
     except asyncio.CancelledError:
