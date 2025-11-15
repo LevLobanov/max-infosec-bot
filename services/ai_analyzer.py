@@ -278,4 +278,4 @@ async def analyze_message_safe(text: str) -> AnalysisResult:
     if len(text) > 4000:
         text = text[:4000] + "... [текст обрезан]"
 
-    return await ai_analyzer.analyze_message(text) # type: ignore
+    return await ai_analyzer.analyze_message(text)  # type: ignore
