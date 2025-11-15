@@ -72,11 +72,10 @@ class S(StatesGroup):
 
 def menu_kb() -> Attachment:
     return ButtonsPayload(
-        buttons=[[
-            CallbackButton(text="Агрегатор утечек", payload="leaks_aggregator")
-        ],[
-            CallbackButton(text="Анализ сообщения", payload="message_analysis")
-        ]]
+        buttons=[
+            [CallbackButton(text="Агрегатор утечек", payload="leaks_aggregator")],
+            [CallbackButton(text="Анализ сообщения", payload="message_analysis")],
+        ]
     ).pack()
 
 
@@ -206,7 +205,9 @@ async def check_link_for_viruses(event: MessageCreated, context: MemoryContext):
     if event.chat and event.chat.type == ChatType.DIALOG:
         user_data = await context.get_data()
         if user_data.get("is_collecting"):
-            await add_message_to_private_conversation(event, context, event.message.body.text)
+            await add_message_to_private_conversation(
+                event, context, event.message.body.text
+            )
             return
         if is_online_link(event.message.body.text):
             await event.message.reply(text="Получил вашу ссылку, проверяю на угрозы...")
@@ -218,7 +219,9 @@ async def check_link_for_viruses(event: MessageCreated, context: MemoryContext):
         if user_data.get("is_collecting"):
             session_owner = user_data.get("session_owner")
             if event.from_user and session_owner == event.from_user.user_id:
-                await add_message_to_group_conversation(event, context, event.message.body.text)
+                await add_message_to_group_conversation(
+                    event, context, event.message.body.text
+                )
             return
 
 
