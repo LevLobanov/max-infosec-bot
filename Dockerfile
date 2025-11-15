@@ -12,6 +12,8 @@ COPY bot.py /app/
 COPY main.py /app/
 COPY virus_checker.py /app/
 COPY leaks_aggregator.py /app/
+COPY handlers /app/handlers
+COPY services /app/services
 
 RUN mkdir -p /app/logs && chown bot:bot /app/logs
 
