@@ -1,0 +1,11 @@
+services:
+  bot:
+    image: max_bot
+    restart: always
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    env_file:
+      - ./.env
+    read_only: true
+    command: ["python", "main.py"]
