@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     MAX_BOT_TOKEN: str = Field(default=...)
     VIRUSTOTAL_API_TOKEN: str = Field(default=...)
     LEAKLOOKUP_PUBLIC_KEY: str = Field(default=...)
+    AI_TUNNEL_TOKEN: str = Field(default=...)
 
     model_config = SettingsConfigDict(env_file=".env")
 
