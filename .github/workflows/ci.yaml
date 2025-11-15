@@ -32,8 +32,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Create temporary .env for build test
-        run: |
-          echo "Some=secrets" > .env
+        run: echo "MAX_BOT_TOKEN = jkhd89d7t)&TGdGHLIO$*H()SDIUH)G" > .env
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
